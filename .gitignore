@@ -1,0 +1,1 @@
+echo expenses.db > .gitignore && echo expenses_v2.db >> .gitignore && echo __pycache__ >> .gitignore

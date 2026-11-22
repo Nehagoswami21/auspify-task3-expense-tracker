@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinPulse | Personal Expense & Budget Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-slate-950">
+
+  <!-- Application Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-30 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xl shadow-inner">
+          <i class="ph ph-wallet"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-base text-white tracking-tight">FinPulse Portal</h1>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">Live Ledger</span>
+          </div>
+          <p class="text-xs text-slate-400">Personal Budget & Expense Management</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <button onclick="exportToExcel()" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-emerald-800/80 bg-emerald-950/40 hover:bg-emerald-900/40 text-xs text-emerald-300 font-semibold transition-all shadow-sm">
+          <i class="ph ph-file-csv text-emerald-400 text-base"></i> Export to Excel (CSV)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+
+    <!-- KPI Metric Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-lg">
+        <span class="text-xs text-slate-400 mono block mb-1">Current Balance</span>
+        <div id="kpiNet" class="text-2xl font-black text-white mono">₹0.00</div>
+        <div class="text-[11px] text-slate-500 mt-2 flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Real-time account total
+        </div>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-lg">
+        <span class="text-xs text-emerald-400 mono block mb-1">Total Income</span>
+        <div id="kpiIncome" class="text-2xl font-black text-emerald-400 mono">+₹0.00</div>
+        <div class="text-[11px] text-slate-500 mt-2">Active sources logged</div>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-lg">
+        <span class="text-xs text-rose-400 mono block mb-1">Total Expenses</span>
+        <div id="kpiExpense" class="text-2xl font-black text-rose-400 mono">-₹0.00</div>
+        <div class="text-[11px] text-slate-500 mt-2">Deducted from budget</div>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-lg">
+        <span class="text-xs text-sky-400 mono block mb-1">Savings Rate</span>
+        <div id="kpiSavingsRate" class="text-2xl font-black text-sky-400 mono">0.0%</div>
+        <div class="text-[11px] text-slate-500 mt-2">Retention efficiency</div>
+      </div>
+    </div>
+
+    <!-- Monthly Budget Cap Gauge -->
+    <div class="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="w-full md:w-1/3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-white uppercase tracking-wider">Monthly Spending Target</span>
+          <span id="budgetCapText" class="text-xs text-slate-400 mono">₹0 / ₹25,000</span>
+        </div>
+        <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
+          <div id="budgetProgressBar" class="h-full bg-emerald-500 transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-6 text-xs text-slate-400">
+        <div>Remaining Limit: <span id="safeMargin" class="text-white font-mono font-bold">₹25,000</span></div>
+        <button onclick="configureBudget()" class="text-sky-400 hover:text-sky-300 font-semibold underline">Edit Target</button>
+      </div>
+    </div>
+
+    <!-- Telemetry Charts & Entry Grid -->
+    <div class="grid lg:grid-cols-12 gap-8">
+      
+      <!-- Entry Form -->
+      <div class="lg:col-span-4">
+        <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-2xl">
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="ph ph-plus-circle text-emerald-400 text-lg"></i> Add New Entry
+            </h2>
+            <span class="text-[10px] text-slate-500">Secure Record</span>
+          </div>
+
+          <form id="txForm" onsubmit="submitTransaction(event)" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Description *</label>
+              <input type="text" id="txTitle" required placeholder="e.g. Grocery, Rent, Salary" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Amount (₹) *</label>
+                <input type="number" id="txAmount" step="0.01" min="0.01" required placeholder="1200.00" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 focus:outline-none mono font-bold">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Type *</label>
+                <select id="txType" onchange="syncCategories()" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none">
+                  <option value="expense">Expense (-)</option>
+                  <option value="income">Income (+)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Category *</label>
+              <select id="txCategory" required class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"></select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Payment Method *</label>
+                <select id="txPaymentMethod" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none">
+                  <option value="UPI (GPay / PhonePe)">UPI</option>
+                  <option value="Debit / Credit Card">Card</option>
+                  <option value="NetBanking">Net Banking</option>
+                  <option value="Cash / Other">Cash</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Date *</label>
+                <input type="date" id="txDate" required class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none mono">
+              </div>
+            </div>
+
+            <button type="submit" id="saveBtn" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20">
+              Save Entry
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Charts & Ledger (8 Cols) -->
+      <div class="lg:col-span-8 space-y-6">
+        
+        <!-- Expense Chart Container -->
+        <div class="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Category Spending Overview</h3>
+              <p class="text-[11px] text-slate-500">Distribution of expenditures by category.</p>
+            </div>
+          </div>
+
+          <div class="h-60 flex items-center justify-center">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Filter & Transactions Table -->
+        <div class="rounded-2xl border border-slate-800 overflow-hidden bg-slate-900/40 shadow-xl">
+          
+          <div class="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="relative w-full sm:w-64">
+              <i class="ph ph-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-sm"></i>
+              <input type="text" id="searchFilter" oninput="loadData()" placeholder="Search transactions..." class="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 focus:outline-none">
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <select id="typeFilter" onchange="loadData()" class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:border-emerald-500 focus:outline-none">
+                <option value="all">All Types</option>
+                <option value="expense">Expenses</option>
+                <option value="income">Income</option>
+              </select>
+
+              <select id="categoryFilter" onchange="loadData()" class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:border-emerald-500 focus:outline-none">
+                <option value="all">All Categories</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 uppercase mono text-[10px]">
+                <tr>
+                  <th class="py-3 px-5">Ref</th>
+                  <th class="py-3 px-5">Description</th>
+                  <th class="py-3 px-5">Category</th>
+                  <th class="py-3 px-5">Method</th>
+                  <th class="py-3 px-5">Date</th>
+                  <th class="py-3 px-5 text-right">Amount</th>
+                  <th class="py-3 px-5 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody id="transactionRows" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+          </div>
+
+          <div id="noDataNotice" class="hidden text-center py-12">
+            <i class="ph ph-receipt text-3xl text-slate-600 mb-2"></i>
+            <p class="text-slate-400 text-xs">No transactions recorded yet.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    const taxonomy = {
+      expense: [
+        "Food & Groceries",
+        "Rent & Utilities",
+        "Education & Books",
+        "Transport & Travel",
+        "Shopping & Electronics",
+        "Healthcare",
+        "Miscellaneous"
+      ],
+      income: [
+        "Stipend",
+        "Salary",
+        "Freelance Project",
+        "Allowance",
+        "Other Income"
+      ]
+    };
+
+    let monthlySpendCap = 25000;
+    let chartInstance = null;
+    let activeRecords = [];
+
+    function initView() {
+      document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+      syncCategories();
+      populateCategoryFilter();
+      loadData();
+    }
+
+    function syncCategories() {
+      const type = document.getElementById('txType').value;
+      const select = document.getElementById('txCategory');
+      select.innerHTML = taxonomy[type].map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function populateCategoryFilter() {
+      const filter = document.getElementById('categoryFilter');
+      const all = [...taxonomy.expense, ...taxonomy.income];
+      filter.innerHTML = '<option value="all">All Categories</option>' + all.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    async function loadData() {
+      const search = document.getElementById('searchFilter').value;
+      const type = document.getElementById('typeFilter').value;
+      const category = document.getElementById('categoryFilter').value;
+
+      let queryParams = new URLSearchParams();
+      if (search) queryParams.append('search', search);
+      if (type !== 'all') queryParams.append('tx_type', type);
+      if (category !== 'all') queryParams.append('category', category);
+
+      try {
+        const [txRes, summaryRes] = await Promise.all([
+          fetch(`/api/transactions?${queryParams.toString()}`),
+          fetch('/api/analytics/summary')
+        ]);
+
+        activeRecords = await txRes.json();
+        const summary = await summaryRes.json();
+
+        renderTable(activeRecords);
+        renderKPIs(summary);
+        renderChart(summary.category_breakdown);
+      } catch (err) {
+        console.error('Data loading error:', err);
+      }
+    }
+
+    function renderKPIs(summary) {
+      document.getElementById('kpiNet').innerText = `₹${summary.net_savings.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+      document.getElementById('kpiIncome').innerText = `+₹${summary.total_income.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+      document.getElementById('kpiExpense').innerText = `-₹${summary.total_expense.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+      document.getElementById('kpiSavingsRate').innerText = `${summary.savings_rate_percent}%`;
+
+      const burnPct = Math.min((summary.total_expense / monthlySpendCap) * 100, 100);
+      const progressBar = document.getElementById('budgetProgressBar');
+      progressBar.style.width = `${burnPct}%`;
+      progressBar.className = `h-full transition-all duration-500 ${burnPct > 85 ? 'bg-rose-500' : burnPct > 65 ? 'bg-amber-400' : 'bg-emerald-500'}`;
+
+      document.getElementById('budgetCapText').innerText = `₹${summary.total_expense.toLocaleString('en-IN')} / ₹${monthlySpendCap.toLocaleString('en-IN')}`;
+      const margin = Math.max(monthlySpendCap - summary.total_expense, 0);
+      document.getElementById('safeMargin').innerText = `₹${margin.toLocaleString('en-IN')}`;
+    }
+
+    function escapeHtml(str) {
+        return String(str ?? '').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+     }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('transactionRows');
+      const empty = document.getElementById('noDataNotice');
+
+      if (data.length === 0) {
+        tbody.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      tbody.innerHTML = data.map(r => {
+        const isInc = r.tx_type === 'income';
+        return `
+          <tr class="hover:bg-slate-900/60 transition-colors">
+            <td class="py-3 px-5 mono text-slate-500">#TX-${escapeHtml(r.id)}</td>
+            <td class="py-3 px-5 font-semibold text-white">${escapeHtml(r.title)}</td>
+            <td class="py-3 px-5 text-slate-300">${escapeHtml(r.category)}</td>
+            <td class="py-3 px-5 text-slate-400">${escapeHtml(r.payment_method)}</td>
+            <td class="py-3 px-5 mono text-slate-500">${r.date}</td>
+            <td class="py-3 px-5 text-right font-bold mono ${isInc ? 'text-emerald-400' : 'text-rose-400'}">
+              ${isInc ? '+' : '-'}₹${r.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}
+            </td>
+            <td class="py-3 px-5 text-center">
+              <button onclick="removeTransaction(${r.id})" class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors" title="Delete">
+                <i class="ph ph-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderChart(breakdown) {
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      const labels = Object.keys(breakdown);
+      const values = Object.values(breakdown);
+
+      if (chartInstance) chartInstance.destroy();
+
+      if (labels.length === 0) {
+        labels.push("No Expenses Logged");
+        values.push(1);
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: values,
+            backgroundColor: [
+              '#10b981', '#0ea5e9', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'
+            ],
+            borderColor: '#020617',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    async function submitTransaction(e) {
+      e.preventDefault();
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'Saving...';
+
+      const payload = {
+        title: document.getElementById('txTitle').value.trim(),
+        amount: parseFloat(document.getElementById('txAmount').value),
+        tx_type: document.getElementById('txType').value,
+        category: document.getElementById('txCategory').value,
+        date: document.getElementById('txDate').value,
+        payment_method: document.getElementById('txPaymentMethod').value
+      };
+
+      try {
+        const res = await fetch('/api/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          document.getElementById('txTitle').value = '';
+          document.getElementById('txAmount').value = '';
+          loadData();
+        } else {
+          alert('Failed to save transaction.');
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerText = 'Save Entry';
+      }
+    }
+
+    async function removeTransaction(id) {
+      if (!confirm('Are you sure you want to delete this record?')) return;
+      try {
+        const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+        if (res.ok) loadData();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function configureBudget() {
+      const val = prompt('Set New Monthly Spending Target (₹):', monthlySpendCap);
+      if (val && !isNaN(val)) {
+        monthlySpendCap = parseFloat(val);
+        loadData();
+      }
+    }
+
+    // Direct Excel / CSV Export Function
+    function exportToExcel() {
+  if (activeRecords.length === 0) { alert('No ledger records to export.'); return; }
+  const data = activeRecords.map(r => ({
+    'Transaction ID': `TX-${r.id}`,
+    'Description': r.title,
+    'Flow Type': r.tx_type.toUpperCase(),
+    'Category': r.category,
+    'Payment Method': r.payment_method,
+    'Date': r.date,
+    'Amount (INR)': r.tx_type === 'income' ? r.amount : -r.amount
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+  XLSX.writeFile(wb, 'FinPulse_Expense_Ledger.xlsx');
+}
+
+
+    initView();
+  </script>
+</body>
+</html>
